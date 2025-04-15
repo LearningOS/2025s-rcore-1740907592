@@ -1,8 +1,7 @@
 //! Process management syscalls
-use alloc::slice;
 
 use crate::{
-    syscall::fs::sys_write, task::{exit_current_and_run_next, suspend_current_and_run_next, TASK_MANAGER}, timer::get_time_us
+    task::{exit_current_and_run_next, suspend_current_and_run_next, TASK_MANAGER}, timer::get_time_us
 };
 
 #[repr(C)]
