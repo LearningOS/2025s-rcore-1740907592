@@ -1,7 +1,8 @@
 //! Process management syscalls
+use alloc::slice;
+
 use crate::{
-    task::{exit_current_and_run_next, suspend_current_and_run_next},
-    timer::get_time_us,
+    syscall::fs::sys_write, task::{exit_current_and_run_next, suspend_current_and_run_next, TASK_MANAGER}, timer::get_time_us
 };
 
 #[repr(C)]
@@ -39,7 +40,30 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
 }
 
 // TODO: implement the syscall
-pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
+pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
     trace!("kernel: sys_trace");
-    -1
+    
+    match trace_request {
+        0 => {
+            let slice = unsafe {
+                core::slice::from_raw_parts(id as *const u8, 1)
+
+            };
+            slice[0] as isize
+        }
+        1 => {
+            let slice = unsafe {
+                core::slice::from_raw_parts_mut(id as *mut u8, 1)
+
+            };
+            slice[0] = data as u8;
+            0
+        }
+        2 => {
+            TASK_MANAGER.get_tim(id)
+        }
+        _ => {
+            -1
+        }
+    }
 }

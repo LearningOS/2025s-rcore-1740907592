@@ -20,9 +20,32 @@ use crate::sync::UPSafeCell;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
+const SYSCALL_WRITE: usize = 64;
+/// exit syscall
+const SYSCALL_EXIT: usize = 93;
+/// yield syscall
+ const SYSCALL_YIELD: usize = 124;
+/// gettime syscall
+const SYSCALL_GET_TIME: usize = 169;
+/// trace syscall
+const SYSCALL_TRACE: usize = 410;
 
 pub use context::TaskContext;
 
+#[allow(missing_docs)] // 忽略整个枚举的文档警告
+#[derive(Copy, Clone)]  // 添加 `Copy`
+pub struct  TaskSyscallTime {
+    ///write次数
+    write : isize,
+    ///read次数
+    ///t
+    trace : isize,
+    ///exit
+    exit : isize,
+    _yield : isize,
+    gettime : isize,
+
+}
 /// The task manager, where all the tasks are managed.
 ///
 /// Functions implemented on `TaskManager` deals with all task state transitions
@@ -32,11 +55,13 @@ pub use context::TaskContext;
 /// Most of `TaskManager` are hidden behind the field `inner`, to defer
 /// borrowing checks to runtime. You can see examples on how to use `inner` in
 /// existing functions on `TaskManager`.
+/// 
 pub struct TaskManager {
     /// total number of tasks
     num_app: usize,
     /// use inner value to get mutable access
-    inner: UPSafeCell<TaskManagerInner>,
+    pub inner: UPSafeCell<TaskManagerInner>,
+
 }
 
 /// Inner of Task Manager
@@ -45,6 +70,7 @@ pub struct TaskManagerInner {
     tasks: [TaskControlBlock; MAX_APP_NUM],
     /// id of current `Running` task
     current_task: usize,
+    tim : [TaskSyscallTime; MAX_APP_NUM]
 }
 
 lazy_static! {
@@ -55,6 +81,13 @@ lazy_static! {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
         }; MAX_APP_NUM];
+        let tims = [TaskSyscallTime {
+            write : 0,
+            trace : 0,
+            exit : 0,
+            _yield : 0,
+            gettime : 0,
+        } ; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
             task.task_status = TaskStatus::Ready;
@@ -65,6 +98,7 @@ lazy_static! {
                 UPSafeCell::new(TaskManagerInner {
                     tasks,
                     current_task: 0,
+                    tim : tims
                 })
             },
         }
@@ -72,6 +106,46 @@ lazy_static! {
 }
 
 impl TaskManager {
+    /// 返回对应系统调用
+    pub fn get_tim(&self, syscall_id : usize) -> isize {
+        let inner = self.inner.exclusive_access();
+        let now = inner.current_task;
+        let tim = inner.tim[now];
+        drop(inner);
+        match syscall_id {
+            SYSCALL_WRITE => {
+                tim.write
+            }
+            SYSCALL_EXIT => {
+                tim.exit
+            }
+            SYSCALL_TRACE => {
+                tim.trace
+            }
+            SYSCALL_YIELD => {
+                tim._yield
+            }
+            SYSCALL_GET_TIME => {
+                tim.gettime
+            }
+            _ => {
+                0
+            }
+        }
+    }
+    /// 获取对应次数
+    pub fn add_tim(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access(); // 获取可变访问
+        let now = inner.current_task;
+        match syscall_id {
+            SYSCALL_WRITE => inner.tim[now].write += 1,
+            SYSCALL_EXIT => inner.tim[now].exit += 1,
+            SYSCALL_TRACE => inner.tim[now].trace += 1,
+            SYSCALL_YIELD => inner.tim[now]._yield += 1,
+            SYSCALL_GET_TIME => inner.tim[now].gettime += 1,
+            _ => {}
+        }
+    }
     /// Run the first task in task list.
     ///
     /// Generally, the first task in task list is an idle task (we call it zero process later).
@@ -168,4 +242,5 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
-}
+} 
+
